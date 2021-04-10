@@ -19,57 +19,82 @@
 
 import struct as st
 
-def read(off,type,data):
-    var=st.unpack_from(type, data, offset=off)[0]
-    off+=4
-    return var, off
+class Reader:
+  def __init__(self,data,offset=0):
+    self.data = data
+    self.off=offset
+
+  def read(self,type):
+    if isinstance(type, int):
+        var=st.unpack_from(str(type-1)+"s", self.data, offset=self.off)[0].decode("utf-8") 
+        self.off+=type
+    else:
+        var=st.unpack_from(type, self.data, offset=self.off)[0]
+        self.off+=st.calcsize(type)
+    return var
 
 def loadKImodel(file):
     data=[]
-    #file=r"E:\AidemMedia\RiK TTW\data\models\grid.kimodel"
-    #file=r"E:\AidemMedia\RiK TTW\data\models\sel.kimodel"
-    #file=r"E:\AidemMedia\RiK TTW\data\models\players\blue\blue.kimodel"
-    #file=r"E:\AidemMedia\RiK TTW\data\models\players\green\1green.kimodel"
-    #file=r"E:\AidemMedia\RiK TTW\data\models\players\yellow\yellow.kimodel"
-    #file=r"E:\AidemMedia\RiK TTW\data\models\levels\planet_monolith.kimodel"
-
     with open(file,"rb") as f:
         data=f.read()
-        
-        
-    vertOff=st.unpack_from("<I", data, offset=28)[0]
-    loopOff=st.unpack_from("<I", data, offset=16)[0]
-    vertNum=st.unpack_from("<I", data, offset=36)[0]
-    loopNum=st.unpack_from("<I", data, offset=24)[0]
+
+
+    loopRead=Reader(data,st.unpack_from("<I", data, offset=16)[0])
+    loopNum=st.unpack_from("<I", data, offset=16+8)[0]
+    
+    vertRead=Reader(data,st.unpack_from("<I", data, offset=28)[0])
+    vertNum=st.unpack_from("<I", data, offset=28+8)[0]
+    
+    boneRead=Reader(data,st.unpack_from("<I", data, offset=256)[0])
+    boneNum=st.unpack_from("<I", data, offset=256+8)[0]
 
 
     vertices = []
     loops = [] 
     uvs = []
+    bones = {
+        "name":[],
+        "pos":[],
+        "parent":[]
+    }
+    bonesP = []
 
     for i in range(0,vertNum):
-        if(vertOff+16>len(data)):
+        if(vertRead.off+16>len(data)):
             break
-        [x,vertOff]=read(vertOff,"<f",data)
+        x=vertRead.read("<f")
+        y=vertRead.read("<f")
+        z=vertRead.read("<f")
+        
         vertices.append(x)
-        [y,vertOff]=read(vertOff,"<f",data)
-        [z,vertOff]=read(vertOff,"<f",data)
         vertices.append(z)
         vertices.append(y)
-        vertOff+=4*4
-        [x,vertOff]=read(vertOff,"<f",data)
-        [y,vertOff]=read(vertOff,"<f",data)
+        vertRead.off+=4*4
+        
+        x=vertRead.read("<f")
+        y=vertRead.read("<f")
         uvs.append((x,1-y))
-        vertOff+=4*8
+        vertRead.off+=4*8
 
     for i in range(0,loopNum):
-        [l,loopOff]=(read(loopOff,"<I",data))
-        loops.append(l)
+        loops.append(loopRead.read("<I"))
+        
+    for i in range(0,boneNum):
+        nSize=boneRead.read("<I")
+        bones["name"].append(boneRead.read(nSize))
 
-    return vertices, loops, uvs
+        bones["parent"].append(boneRead.read("<I"))
+        
+        x=boneRead.read("<f")
+        y=boneRead.read("<f")
+        z=boneRead.read("<f")
+        bones["pos"].append([x,z,y])
+        
+        boneRead.off+=7*4
+
+    return vertices, loops, uvs, bones
 
 # #### Your file exporter here ####
-
 
 
 # #### Blender Section ####
@@ -91,9 +116,11 @@ try:
     
 
 
-    def blendCreateObject(name, vertices, loops, uvs):
+    def blendCreateObject(name, vertices, loops, uvs, bones):
         vertNum=int(len(vertices)/3)
         loopNum=len(loops)
+        bonesNum=len(bones["name"])
+        
         mesh = bpy.data.meshes.new('KI')
 
         mesh.vertices.add(vertNum)
@@ -117,8 +144,36 @@ try:
         mesh.update()
 
         object = bpy.data.objects.new(name, mesh)
-
         bpy.context.scene.collection.objects.link(object)
+        
+        
+        
+        arm_data = bpy.data.armatures.new("name")
+        arm_ob = bpy.data.objects.new("name", arm_data)
+        bpy.context.collection.objects.link(arm_ob)
+
+        arm_ob.select_set(True)
+        bpy.context.view_layer.objects.active = arm_ob
+
+        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+
+        edit_bones = arm_data.edit_bones
+        
+        bBones=[]
+        print(bones["name"])
+        for b in range(0,bonesNum):
+            bone=edit_bones.new(bones["name"][b])
+            bone.head = bones["pos"][b]
+            bone.tail = bones["pos"][b]
+            bBones.append(bone)
+        print(len(bBones)) 
+        print(len(bones["name"])) 
+        for b in range(0,bonesNum):
+            if bones["parent"][b]<32:
+                bBones[b].parent=bBones[bones["parent"][b]]
+            bBones[b].use_connect = True
+        bpy.ops.object.mode_set(mode='OBJECT')
 
 
 
@@ -140,7 +195,6 @@ try:
 
         def execute(self, context):
             for f in self.files:
-                print(f.name)
                 v,l,u = loadKImodel(self.directory+f.name)
                 blendCreateObject(f.name.split('.')[0],v,l,u)
             return {'FINISHED'}
@@ -164,7 +218,14 @@ try:
         bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
         bpy.utils.unregister_class(ImportKImodel)
 
-    if __name__ == "__main__":
-        register()
 except ModuleNotFoundError as err:
     pass
+
+#file=r"E:\AidemMedia\RiK TTW\data\models\grid.kimodel"
+#file=r"E:\AidemMedia\RiK TTW\data\models\sel.kimodel"
+#file=r"E:\AidemMedia\RiK TTW\data\models\players\blue\blue.kimodel"
+file=r"E:\AidemMedia\RiK TTW\data\models\players\green\green.kimodel"
+#file=r"E:\AidemMedia\RiK TTW\data\models\players\yellow\yellow.kimodel"
+#file=r"E:\AidemMedia\RiK TTW\data\models\levels\planet_monolith.kimodel"
+v,l,u,b = loadKImodel(file)
+blendCreateObject("Fug",v,l,u,b)
