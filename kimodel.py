@@ -18,6 +18,7 @@
 # #### Main section ####
 
 import struct as st
+import mathutils as mu
 
 class Reader:
   def __init__(self,data,offset=0):
@@ -54,7 +55,9 @@ def loadKImodel(file):
     uvs = []
     bones = {
         "name":[],
-        "pos":[],
+        "off":[],
+        "qat":[],
+        "scl":[],
         "parent":[]
     }
     bonesP = []
@@ -83,14 +86,24 @@ def loadKImodel(file):
         nSize=boneRead.read("<I")
         bones["name"].append(boneRead.read(nSize))
 
-        bones["parent"].append(boneRead.read("<I"))
+        bones["parent"].append(boneRead.read("<i"))
+        x=boneRead.read("<f")
+        z=boneRead.read("<f")
+        y=boneRead.read("<f")
+        bones["off"].append([x,y,z])
+        
+        y=boneRead.read("<f")
+        x=boneRead.read("<f")
+        z=boneRead.read("<f")
+        w=boneRead.read("<f")
+        bones["qat"].append([w,x,y,z])
         
         x=boneRead.read("<f")
-        y=boneRead.read("<f")
         z=boneRead.read("<f")
-        bones["pos"].append([x,z,y])
+        y=boneRead.read("<f")
+        bones["scl"].append([x,y,z])
         
-        boneRead.off+=7*4
+#        boneRead.off+=4*4
 
     return vertices, loops, uvs, bones
 
@@ -161,19 +174,64 @@ try:
         edit_bones = arm_data.edit_bones
         
         bBones=[]
-        print(bones["name"])
+        
         for b in range(0,bonesNum):
             bone=edit_bones.new(bones["name"][b])
-            bone.head = bones["pos"][b]
-            bone.tail = bones["pos"][b]
+            
+            pos=mu.Vector()
+            qat=mu.Quaternion()
+            
+            now=b
+            pChain=[]
+            while now!=-1:
+                pChain.append(now)
+                now=bones["parent"][now]
+                
+            pChain.reverse()
+            
+            for now in pChain:
+#                print(0.1**(15))
+#                if bones["off"][now][0] < 0.1**15 and bones["off"][now][0] > -0.1**15:
+#                    bones["off"][now][0]=0
+#                if bones["off"][now][1] < 0.1**15 and bones["off"][now][1] > -0.1**15:
+#                    bones["off"][now][1]=0
+#                if bones["off"][now][2] < 0.1**15 and bones["off"][now][2] > -0.1**15:
+#                    bones["off"][now][2]=0
+#                qat=mu.Quaternion(bones["qat"][now][0])
+                posNow=mu.Vector(bones["off"][now])
+                posNow.rotate(qat)
+                
+                qatNow=mu.Quaternion(bones["qat"][now])
+                qat.rotate(qatNow)
+                
+                pos+=posNow
+                
+
+                
+                    
+#            print(str(b)+", "+str(bones["parent"][b])+", "+bones["name"][b]+", "+str(bones["off"][b])+" "+str(bones["qtr"][b])+" "+str(bones["scl"][b]))
+            
+#            print(str(b)+" "+bones["name"][b]+": "+str(bones["off"][b]))
+            print(str(b)+" "+bones["name"][b]+": "+str(posNow))
+#            pos=bones["off"][b]
+#            bone.head = (pos[0],pos[1]-0.2,pos[2])
+#            bone.head =posLast
+#            bone.head =pos+mu.Vector((0,0.3,0))
+            bone.head =pos+mu.Vector((0.2,0,0))
+            bone.tail = pos
+            
+            
+            
+            if(b>13):
+                bone.hide=True
             bBones.append(bone)
-        print(len(bBones)) 
-        print(len(bones["name"])) 
-        for b in range(0,bonesNum):
-            if bones["parent"][b]<32:
+        for b in range(0,len(bBones)):
+            bBones[b].use_connect = False
+            if bones["parent"][b]!=-1:
+                pass
                 bBones[b].parent=bBones[bones["parent"][b]]
-            bBones[b].use_connect = True
-        bpy.ops.object.mode_set(mode='OBJECT')
+            
+#        bpy.ops.object.mode_set(mode='OBJECT')
 
 
 
@@ -224,7 +282,9 @@ except ModuleNotFoundError as err:
 #file=r"E:\AidemMedia\RiK TTW\data\models\grid.kimodel"
 #file=r"E:\AidemMedia\RiK TTW\data\models\sel.kimodel"
 #file=r"E:\AidemMedia\RiK TTW\data\models\players\blue\blue.kimodel"
-file=r"E:\AidemMedia\RiK TTW\data\models\players\green\green.kimodel"
+#file=r"E:\AidemMedia\RiK TTW\data\models\players\green\green.kimodel"
+#file="/mnt/data/models/players/green/green.kimodel"
+file="/mnt/data/models/players/blue/blue.kimodel"
 #file=r"E:\AidemMedia\RiK TTW\data\models\players\yellow\yellow.kimodel"
 #file=r"E:\AidemMedia\RiK TTW\data\models\levels\planet_monolith.kimodel"
 v,l,u,b = loadKImodel(file)

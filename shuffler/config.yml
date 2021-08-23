@@ -1,0 +1,25 @@
+games:
+- dir: ''
+  mix: 1
+  type: RiSP
+- dir: ''
+  mix: 1
+  type: RiU
+- dir: ''
+  mix: 1
+  type: RiC
+- dir: ''
+  mix: 1
+  type: RiWC
+- dir: ''
+  mix: 1
+  type: RiKN
+settings:
+  MixCharacters: 0
+  MixDialogs: 1
+  MixEpisodes: 1
+  MixGames: 0
+  MixMusic: 0
+  MixSfx: 1
+  MixSfxWithDialogs: 1
+  Seed: '9917152824689'
